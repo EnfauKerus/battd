@@ -1,0 +1,164 @@
+#!/bin/sh
+CONFIG_PATH="${XDG_CONFIG_HOME-$HOME/.config}/battd.conf"
+BATTERY_PATH="/sys/class/power_supply/BAT*"
+LEVEL_WARNING=20
+LEVEL_WARNING_NOTIFY_SUMMARY="Battery low"
+LEVEL_WARNING_NOTIFY_BODY="Battery level is at %d%%"
+LEVEL_WARNING_NOTIFY_TIMEOUT_MS=10000
+LEVEL_WARNING_NOTIFY_ICON="battery-low"
+LEVEL_WARNING_CMD=""
+LEVEL_CAUTION=10
+LEVEL_CAUTION_NOTIFY_SUMMARY="Battery level is very low"
+LEVEL_CAUTION_NOTIFY_BODY="Battery level is at %d%%"
+LEVEL_CAUTION_NOTIFY_TIMEOUT_MS=30000
+LEVEL_CAUTION_NOTIFY_ICON="battery-caution"
+LEVEL_CAUTION_CMD=""
+LEVEL_DANGER=5
+LEVEL_DANGER_NOTIFY_SUMMARY="Battery level is in danger"
+LEVEL_DANGER_NOTIFY_BODY="BATTERY LEVEL IS AT %d%%"
+LEVEL_DANGER_NOTIFY_TIMEOUT_MS=60000
+LEVEL_DANGER_NOTIFY_ICON="battery-empty"
+LEVEL_DANGER_CMD=""
+MONITOR_DELAY=60
+
+last_energy=-1
+
+main() {
+	trap trap_handler INT TERM
+	# load config, overrides default config
+	# shellcheck source=/dev/null
+	[ -f "$CONFIG_PATH" ] && . "$CONFIG_PATH"
+
+	last_energy=$(get_total_energy)
+	if [ "$last_energy" -eq -1 ]
+	then
+		echoerr "No battery found, exiting."
+		exit 1
+	fi
+	while true
+	do
+		check
+		sleep $MONITOR_DELAY &
+		wait $!
+	done
+}
+
+trap_handler() {
+	kill $!
+	exit
+}
+
+check() {
+	is_charging && return 0
+	fi
+	current_energy=$(get_total_energy)
+	if [ "$last_energy" -ne "$current_energy" ]
+	then
+		notify_level=""
+		notify_icon=""
+		notify_summary=""
+		notify_body=""
+		notify_timeout=""
+		cmd_to_execute=""
+		skip=false
+		if [ "$current_energy" -le "$LEVEL_DANGER" ]
+		then
+			notify_level="critical"
+			notify_icon="$LEVEL_DANGER_NOTIFY_ICON"
+			notify_summary="$LEVEL_DANGER_NOTIFY_SUMMARY"
+			notify_body="$LEVEL_DANGER_NOTIFY_BODY"
+			notify_timeout="$LEVEL_DANGER_NOTIFY_TIMEOUT_MS"
+			cmd_to_execute="$LEVEL_DANGER_CMD"
+		elif [ "$current_energy" -le "$LEVEL_CAUTION" ]
+		then
+			notify_level="normal"
+			notify_icon="$LEVEL_CAUTION_NOTIFY_ICON"
+			notify_summary="$LEVEL_CAUTION_NOTIFY_SUMMARY"
+			notify_body="$LEVEL_CAUTION_NOTIFY_BODY"
+			notify_timeout="$LEVEL_CAUTION_NOTIFY_TIMEOUT_MS"
+			cmd_to_execute="$LEVEL_CAUTION_CMD"
+		elif [ "$current_energy" -le "$LEVEL_WARNING" ]
+		then
+			notify_level="normal"
+			notify_icon="$LEVEL_WARNING_NOTIFY_ICON"
+			notify_summary="$LEVEL_WARNING_NOTIFY_SUMMARY"
+			notify_body="$LEVEL_WARNING_NOTIFY_BODY"
+			notify_timeout="$LEVEL_WARNING_NOTIFY_TIMEOUT_MS"
+			cmd_to_execute="$LEVEL_WARNING_CMD"
+		else
+			skip=true
+		fi
+		if ! $skip
+		then
+			# shellcheck disable=SC2059
+			notify_summary=$(printf "$notify_summary" "$current_energy")
+			# shellcheck disable=SC2059
+			notify_body=$(printf "$notify_body" "$current_energy")
+			notify-send \
+				--urgency="$notify_level" \
+				--expire-time="$notify_timeout" \
+				--icon="$notify_icon" \
+				--category=device \
+				"$notify_summary" "$notify_body"
+			[ -n "$cmd_to_execute" ] && eval "$cmd_to_execute"
+		fi
+	fi
+}
+
+get_total_energy() {
+	count=0
+	energy=0
+	for bat in $BATTERY_PATH
+	do
+		_=$(( count += 1 ))
+		_=$(( energy += $( cat "$bat/energy_now" ) * 1000 / $( cat "$bat/energy_full" ) ))
+	done
+	echo $(( energy /= 10 * count ))
+}
+
+is_charging() {
+	for bat in $BATTERY_PATH
+	do
+		status=$( cat "$bat/status" )
+		[ "$status" = "Charging" ] && return 0
+	done
+	return 1
+}
+
+print_help() {
+	echoerr "Battery daemon written in POSIX sh.
+	Usage:
+		-c FILE		Path to config file
+"
+}
+
+echoerr() {
+	echo "$0: $*" >&2
+}
+
+argparse() {
+while getopts 'c:h' f
+	do
+		case $f in
+			c)
+				CONFIG_PATH="$OPTARG"
+				if [ ! -r "$CONFIG_PATH" ]
+				then
+					echoerr "Config file '$CONFIG_PATH' cannot be read or it does not exist."
+					exit 2
+				fi
+				;;
+			h)
+				print_help
+				exit 0
+				;;
+			\?)
+				echoerr "Unknown arguments."
+				print_help
+				exit 1
+				;;
+		esac
+	done
+}
+
+argparse "$@" && main

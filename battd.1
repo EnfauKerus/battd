@@ -1,0 +1,25 @@
+.TH "battd" 1
+.SH NAME
+.PP
+battd - battery monitor written in POSIX sh
+.SH SYNOPSIS
+.PP
+\f[BI]battd\f[R] [\f[I]-c config-file\f[R]]
+.SH DESCRIPTION
+.PP
+Sends notification with when battery reached a certain level.  
+.SH OPTIONS
+.PP
+\f[BI]-c\f[R] config-file
+Read config from \f[I]config-file\f[R] instead of \f[I]$XDG_CONFIG_HOME\f[R] 
+or \(ti/.config if \f[I]$XDG_CONFIG_HOME\f[R] is not defined.
+.SS -h
+.PP
+print options and exit.
+.SH SEE ALSO
+.sp 1
+.nf
+.ft CR
+batsignal(1)
+.ft
+.fi
