@@ -1,6 +1,10 @@
 #!/bin/sh
 CONFIG_PATH="${XDG_CONFIG_HOME-$HOME/.config}/battd.conf"
 BATTERY_PATH="/sys/class/power_supply/BAT*"
+ENERGY_NOW="energy_now"
+ENERGY_FULL="energy_full"
+# For batteries that doesn't have energy_full
+ENERGY_FULL_OVERRIDE=
 LEVEL_WARNING=20
 LEVEL_WARNING_NOTIFY_SUMMARY="Battery low"
 LEVEL_WARNING_NOTIFY_BODY="Battery level is at %d%%"
@@ -50,7 +54,6 @@ trap_handler() {
 
 check() {
 	is_charging && return 0
-	fi
 	current_energy=$(get_total_energy)
 	if [ "$last_energy" -ne "$current_energy" ]
 	then
@@ -111,7 +114,12 @@ get_total_energy() {
 	for bat in $BATTERY_PATH
 	do
 		_=$(( count += 1 ))
-		_=$(( energy += $( cat "$bat/energy_now" ) * 1000 / $( cat "$bat/energy_full" ) ))
+		if [ -z "$ENERGY_FULL_OVERRIDE" ]
+		then
+			_=$(( energy += $( cat "$bat/$ENERGY_NOW" ) * 1000 / $( cat "$bat/$ENERGY_FULL" ) ))
+		else
+			_=$(( energy += $( cat "$bat/$ENERGY_NOW" ) * 1000 / ENERGY_FULL_OVERRIDE ))
+		fi
 	done
 	echo $(( energy /= 10 * count ))
 }
